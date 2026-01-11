@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>iPad Notes</title>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <style>
+        :root {
+            --system-blue: #007AFF;
+            --system-red: #FF3B30;
+            --system-bg: #F2F2F7;
+            --toolbar-bg: rgba(255, 255, 255, 0.9);
+        }
+
+        body, html { 
+            margin: 0; padding: 0; overflow: hidden; 
+            background-color: var(--system-bg);
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+            height: 100%; width: 100%;
+            /* Hide system cursor when drawing for immersion */
+            cursor: crosshair; 
+        }
+
+        /* Paper Styles */
+        #canvas-wrapper { 
+            width: 100vw; height: 100vh; 
+            background-color: white; 
+            transition: background 0.2s ease;
+        }
+
+        .grid-bg {
+            background-image: linear-gradient(#e1e1e1 1px, transparent 1px),
+                              linear-gradient(90deg, #e1e1e1 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+
+        .lined-bg {
+            background-image: linear-gradient(#e1e1e1 1px, transparent 1px);
+            background-size: 100% 35px;
+        }
+
+        /* Floating Toolbar */
+        .apple-palette {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: var(--toolbar-bg);
+            backdrop-filter: saturate(180%) blur(25px);
+            -webkit-backdrop-filter: saturate(180%) blur(25px);
+            padding: 8px 16px; border-radius: 24px;
+            display: flex; gap: 8px; align-items: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.05);
+            border: 0.5px solid rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+
+        .tool {
+            width: 44px; height: 44px; border-radius: 10px; border: none;
+            background: transparent; color: #1c1c1e; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.4rem; transition: all 0.2s;
+        }
+
+        .tool:hover { background: rgba(0,0,0,0.05); }
+        .tool.active { background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.12); transform: translateY(-2px); color: var(--system-blue); }
+        
+        /* SVG Icon styling */
+        .tool svg { width: 24px; height: 24px; fill: currentColor; }
+
+        .separator { width: 1px; height: 26px; background: rgba(0,0,0,0.15); margin: 0 4px; }
+
+        input[type="color"] { -webkit-appearance: none; border: none; width: 32px; height: 32px; cursor: pointer; background: none; }
+        
+        input[type="range"] {
+            -webkit-appearance: none; width: 80px; height: 5px;
+            background: rgba(0,0,0,0.1); border-radius: 5px; outline: none; margin: 0 5px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 20px; height: 20px;
+            background: white; border-radius: 50%; cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2); border: 0.5px solid rgba(0,0,0,0.1);
+        }
+
+        #save-label { color: var(--system-blue); font-size: 15px; font-weight: 600; padding: 0 8px; cursor: pointer; user-select: none; }
+
+        /* Responsive / Mobile tweaks */
+        @media (max-width: 720px) {
+            .apple-palette {
+                bottom: 14px;
+                padding: 6px 10px;
+                gap: 6px;
+                border-radius: 20px;
+                left: 12px;
+                right: 12px;
+                transform: none;
+                justify-content: space-between;
+                overflow-x: auto;
+            }
+            .apple-palette .tool { width: 48px; height: 48px; font-size: 1.25rem; border-radius: 12px; }
+            input[type="range"] { width: 120px; }
+            input[type="color"] { width: 36px; height: 36px; }
+            .grid-bg { background-size: 20px 20px; }
+            .lined-bg { background-size: 100% 28px; }
+            #save-label { font-size: 16px; padding: 0 10px; }
+            .separator { height: 22px; }
+        }
+
+        @media (max-width: 420px) {
+            .apple-palette { padding: 6px 8px; gap: 4px; }
+            input[type="range"] { width: 100px; }
+            .tool { width: 52px; height: 52px; }
+        }
+
+        /* Improve touch targets */
+        @media (hover: none) {
+            .tool { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="apple-palette">
+    <button class="tool active" id="drawBtn" title="Pencil">🖋️</button>
+    
+    <button class="tool" id="selectBtn" title="Lasso Tool">
+        <svg viewBox="0 0 24 24"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z" /></svg>
+    </button>
+    
+    <button class="tool" id="textBtn" title="Text">A</button>
+    
+    <button class="tool" id="rectBtn" title="Rectangle">⬜</button>
+    <button class="tool" id="circleBtn" title="Circle">⭕</button>
+
+    <button class="tool" id="paperBtn" title="Paper Style">📜</button>
+    
+    <div class="separator"></div>
+    
+    <input type="color" id="colorPicker" value="#007AFF">
+    <input type="range" id="thickness" min="1" max="40" value="4">
+    
+    <div class="separator"></div>
+    
+    <button class="tool" id="clearBtn" style="color: var(--system-red);">🗑️</button>
+    <div id="save-label">Done</div>
+</div>
+
+<div id="canvas-wrapper" class="grid-bg">
+    <canvas id="main-canvas"></canvas>
+</div>
+
+<script>
+    const canvas = new fabric.Canvas('main-canvas', {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        isDrawingMode: true,
+        selection: false,
+        backgroundColor: null
+    });
+
+    // High-DPI (Retina) scaling + responsive resize
+    function resizeCanvas() {
+        const ratio = window.devicePixelRatio || 1;
+        const w = Math.floor(window.innerWidth);
+        const h = Math.floor(window.innerHeight);
+        // Use backing store scaling for crisp drawing on high-DPI displays
+        canvas.setWidth(w * ratio, { backstoreOnly: true });
+        canvas.setHeight(h * ratio, { backstoreOnly: true });
+        // Ensure CSS size matches layout pixels
+        canvas.lowerCanvasEl.style.width = w + 'px';
+        canvas.lowerCanvasEl.style.height = h + 'px';
+        canvas.upperCanvasEl.style.width = w + 'px';
+        canvas.upperCanvasEl.style.height = h + 'px';
+        // Scale content to account for ratio
+        canvas.setZoom(ratio);
+        canvas.calcOffset();
+        canvas.renderAll();
+    }
+    // Initial resize for current device
+    resizeCanvas();
+
+    const wrapper = document.getElementById('canvas-wrapper');
+    let paperMode = 1;
+
+    // --- Brush Logic ---
+    function updateBrush() {
+        const color = document.getElementById('colorPicker').value;
+        const width = parseInt(document.getElementById('thickness').value);
+        
+        if(!canvas.freeDrawingBrush) canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+        canvas.freeDrawingBrush.color = color;
+        canvas.freeDrawingBrush.width = width;
+        canvas.freeDrawingBrush.decimate = 2;
+
+        const active = canvas.getActiveObject();
+        if(active) {
+            if(active.type === 'i-text') {
+                active.set('fill', color);
+            } else {
+                active.set('stroke', color);
+                active.set('strokeWidth', width);
+            }
+            canvas.renderAll();
+        }
+    }
+
+    function setTool(toolId) {
+        document.querySelectorAll('.tool').forEach(t => t.classList.remove('active'));
+        document.getElementById(toolId).classList.add('active');
+
+        canvas.isDrawingMode = (toolId === 'drawBtn');
+        canvas.selection = (toolId === 'selectBtn');
+
+        // Toggle cursor based on mode
+        document.body.style.cursor = (toolId === 'drawBtn') ? 'crosshair' : 'default';
+
+        canvas.forEachObject(obj => {
+            obj.selectable = (toolId === 'selectBtn');
+            obj.evented = (toolId === 'selectBtn');
+        });
+        canvas.requestRenderAll();
+    }
+
+    // --- Buttons ---
+    document.getElementById('drawBtn').onclick = () => setTool('drawBtn');
+    document.getElementById('selectBtn').onclick = () => setTool('selectBtn');
+
+    document.getElementById('textBtn').onclick = () => {
+        setTool('selectBtn');
+        const text = new fabric.IText('Text', {
+            left: window.innerWidth / 2 - 50, top: window.innerHeight / 2,
+            fontFamily: 'Caveat', fontSize: 40,
+            fill: document.getElementById('colorPicker').value
+        });
+        canvas.add(text);
+        canvas.setActiveObject(text);
+    };
+
+    document.getElementById('rectBtn').onclick = () => {
+        setTool('selectBtn');
+        const width = parseInt(document.getElementById('thickness').value);
+        canvas.add(new fabric.Rect({
+            left: 200, top: 200, width: 120, height: 100,
+            fill: 'transparent', stroke: document.getElementById('colorPicker').value,
+            strokeWidth: width, rx: 10, ry: 10,
+            cornerColor: '#007AFF', cornerStyle: 'circle'
+        }));
+    };
+
+    document.getElementById('circleBtn').onclick = () => {
+        setTool('selectBtn');
+        const width = parseInt(document.getElementById('thickness').value);
+        canvas.add(new fabric.Circle({
+            left: 250, top: 200, radius: 50,
+            fill: 'transparent', stroke: document.getElementById('colorPicker').value,
+            strokeWidth: width,
+            cornerColor: '#007AFF', cornerStyle: 'circle'
+        }));
+    };
+
+    document.getElementById('paperBtn').onclick = () => {
+        paperMode = (paperMode + 1) % 3;
+        wrapper.className = '';
+        if (paperMode === 1) wrapper.classList.add('grid-bg');
+        if (paperMode === 2) wrapper.classList.add('lined-bg');
+    };
+
+    document.getElementById('thickness').oninput = updateBrush;
+    document.getElementById('colorPicker').oninput = updateBrush;
+
+    document.getElementById('save-label').onclick = () => {
+        canvas.discardActiveObject().renderAll();
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width; tempCanvas.height = canvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.fillStyle = '#ffffff';
+        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+        
+        const img = new Image();
+        img.src = canvas.toDataURL();
+        img.onload = () => {
+            tempCtx.drawImage(img, 0, 0);
+            const link = document.createElement('a');
+            link.download = 'Note.png';
+            link.href = tempCanvas.toDataURL();
+            link.click();
+        };
+    };
+
+    document.getElementById('clearBtn').onclick = () => {
+        if(confirm('Delete all?')) canvas.clear();
+    };
+
+    updateBrush();
+    window.addEventListener('resize', resizeCanvas);
+
+    window.addEventListener('keydown', (e) => {
+        if ((e.key === 'Delete' || e.key === 'Backspace') && !canvas.getActiveObject()?.isEditing) {
+            canvas.remove(...canvas.getActiveObjects());
+            canvas.discardActiveObject().renderAll();
+        }
+    });
+</script>
+</body>
+</html>
